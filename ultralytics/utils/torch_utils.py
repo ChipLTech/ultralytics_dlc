@@ -27,6 +27,7 @@ from ultralytics.utils import (
     WINDOWS,
     __version__,
     colorstr,
+    use_dlc,
 )
 from ultralytics.utils.checks import check_version
 
@@ -101,6 +102,9 @@ def autocast(enabled: bool, device: str = "cuda"):
             pass
         ```
     """
+    if use_dlc():
+        import torch.dlc.amp
+        return torch.dlc.amp.autocast(enabled)
     if TORCH_1_13:
         return torch.amp.autocast(device, enabled=enabled)
     else:
@@ -126,7 +130,10 @@ def get_cpu_info():
 
 def get_gpu_info(index):
     """Return a string with system GPU information, i.e. 'Tesla T4, 15102MiB'."""
-    properties = torch.cuda.get_device_properties(index)
+    if use_dlc():
+        properties = torch.dlc.get_device_properties(index)
+    else:
+        properties = torch.cuda.get_device_properties(index)
     return f"{properties.name}, {properties.total_memory / (1 << 20):.0f}MiB"
 
 
@@ -168,7 +175,7 @@ def select_device(device="", batch=0, newline=False, verbose=True):
 
     s = f"Ultralytics {__version__} 🚀 Python-{PYTHON_VERSION} torch-{torch.__version__} "
     device = str(device).lower()
-    for remove in "cuda:", "none", "(", ")", "[", "]", "'", " ":
+    for remove in "cuda:", "dlc:", "none", "(", ")", "[", "]", "'", " ":
         device = device.replace(remove, "")  # to string, 'cuda:0' -> '0' and '(0, 1)' -> '0,1'
     cpu = device == "cpu"
     mps = device in {"mps", "mps:0"}  # Apple Metal Performance Shaders (MPS)
@@ -177,11 +184,24 @@ def select_device(device="", batch=0, newline=False, verbose=True):
     elif device:  # non-cpu device requested
         if device == "cuda":
             device = "0"
+        if device == "dlc":
+            device = "0"
         if "," in device:
             device = ",".join([x for x in device.split(",") if x])  # remove sequential commas, i.e. "0,,1" -> "0,1"
         visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
         os.environ["CUDA_VISIBLE_DEVICES"] = device  # set environment variable - must be before assert is_available()
-        if not (torch.cuda.is_available() and torch.cuda.device_count() >= len(device.split(","))):
+        os.environ["DLC_VISIBLE_DEVICES"] = device
+        if use_dlc():
+            if torch.dlc.device_count() < len(device.split(",")):
+                LOGGER.info(s)
+                raise ValueError(
+                    f"Invalid DLC 'device={device}' requested."
+                    f" Use 'device=cpu' or pass valid DLC device(s) if available,"
+                    f" i.e. 'device=0' or 'device=0,1,2,3' for Multi-GPU.\n"
+                    f"\ntorch.dlc.is_available(): {torch.dlc.is_available()}"
+                    f"\ntorch.dlc.device_count(): {torch.dlc.device_count()}"
+                )
+        elif not (torch.cuda.is_available() and torch.cuda.device_count() >= len(device.split(","))):
             LOGGER.info(s)
             install = (
                 "See https://pytorch.org/get-started/locally/ for up-to-date torch install instructions if no "
@@ -199,7 +219,7 @@ def select_device(device="", batch=0, newline=False, verbose=True):
                 f"{install}"
             )
 
-    if not cpu and not mps and torch.cuda.is_available():  # prefer GPU if available
+    if not cpu and not mps and torch.cuda.is_available() or use_dlc():  # prefer GPU if available
         devices = device.split(",") if device else "0"  # i.e. "0,1" -> ["0", "1"]
         n = len(devices)  # device count
         if n > 1:  # multi-GPU
@@ -215,8 +235,8 @@ def select_device(device="", batch=0, newline=False, verbose=True):
                 )
         space = " " * (len(s) + 1)
         for i, d in enumerate(devices):
-            s += f"{'' if i == 0 else space}CUDA:{d} ({get_gpu_info(i)})\n"  # bytes to MB
-        arg = "cuda:0"
+            s += f"{'' if i == 0 else space}{'DLC' if use_dlc() else 'CUDA'}:{d} ({get_gpu_info(i)})\n"  # bytes to MB
+        arg = f"{'dlc' if use_dlc() else 'cuda'}:0"
     elif mps and TORCH_2_0 and torch.backends.mps.is_available():
         # Prefer MPS if available
         s += f"MPS ({get_cpu_info()})\n"
@@ -236,6 +256,8 @@ def time_sync():
     """PyTorch-accurate time."""
     if torch.cuda.is_available():
         torch.cuda.synchronize()
+    if torch.dlc.is_available():
+        torch.dlc.synchronize()
     return time.time()
 
 
@@ -491,6 +513,9 @@ def init_seeds(seed=0, deterministic=False):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)  # for Multi-GPU, exception safe
+    if use_dlc():
+        torch.dlc.manual_seed(seed)
+        torch.dlc.manual_seed_all(seed)
     # torch.backends.cudnn.benchmark = True  # AutoBatch problem https://github.com/ultralytics/yolov5/issues/9287
     if deterministic:
         if TORCH_2_0:
@@ -646,6 +671,8 @@ def profile(input, ops, n=10, device=None, max_num_obj=0):
     )
     gc.collect()  # attempt to free unused memory
     torch.cuda.empty_cache()
+    if use_dlc():
+        torch.dlc.empty_cache()
     for x in input if isinstance(input, list) else [input]:
         x = x.to(device)
         x.requires_grad = True
@@ -679,7 +706,10 @@ def profile(input, ops, n=10, device=None, max_num_obj=0):
                             device=device,
                             dtype=torch.float32,
                         )
-                mem = torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0  # (GB)
+                if use_dlc():
+                    mem = torch.dlc.memory_reserved() / 1e9  # (GB)
+                else:
+                    mem = torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0  # (GB)
                 s_in, s_out = (tuple(x.shape) if isinstance(x, torch.Tensor) else "list" for x in (x, y))  # shapes
                 p = sum(x.numel() for x in m.parameters()) if isinstance(m, nn.Module) else 0  # parameters
                 LOGGER.info(f"{p:12}{flops:12.4g}{mem:>14.3f}{tf:14.4g}{tb:14.4g}{str(s_in):>24s}{str(s_out):>24s}")
@@ -690,6 +720,8 @@ def profile(input, ops, n=10, device=None, max_num_obj=0):
             finally:
                 gc.collect()  # attempt to free unused memory
                 torch.cuda.empty_cache()
+                if use_dlc():
+                    torch.dlc.empty_cache()
     return results
 
 

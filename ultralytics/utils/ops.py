@@ -13,6 +13,32 @@ import torch.nn.functional as F
 from ultralytics.utils import LOGGER
 from ultralytics.utils.metrics import batch_probiou
 
+def debug_print(*args):
+    import os
+    if os.environ.get("PY_DEBUG") != '1':
+        return
+    import inspect
+    import sys
+    f = inspect.currentframe().f_back
+    frameinfo = inspect.getframeinfo(f)
+    filename = frameinfo.filename
+    lineno = frameinfo.lineno
+    # get the class name 
+    try:
+        class_name = f.f_locals['self'].__class__.__name__
+    except:
+        class_name = None
+    # get the function name 
+    func = frameinfo.function
+    msg = f"\n\033[36m{filename}:{lineno} \033[0m"
+    if class_name:
+        msg += f"\033[1m\033[33m{class_name} [{func}]\033[0m "
+    else:
+        msg += f"\033[1m\033[33m[{func}]\033[0m "
+    msg += " ".join(str(arg) for arg in args)
+    print(msg, "\n", file=sys.stdout)
+    sys.stdout.flush()
+    return msg
 
 class Profile(contextlib.ContextDecorator):
     """
@@ -289,7 +315,9 @@ def non_max_suppression(
             i = nms_rotated(boxes, scores, iou_thres)
         else:
             boxes = x[:, :4] + c  # boxes (offset by class)
-            i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
+            # FIXME TODO: use native dlc op
+            i = torchvision.ops.nms(boxes.cpu(), scores.cpu(), iou_thres).to(device=x.device)
+            # i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
         i = i[:max_det]  # limit detections
 
         # # Experimental

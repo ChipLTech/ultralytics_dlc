@@ -28,6 +28,11 @@ from tqdm import tqdm as tqdm_original
 
 from ultralytics import __version__
 
+from functools import lru_cache 
+@lru_cache(maxsize=1)
+def use_dlc() -> bool:
+    return os.environ.get("ACCELERATE_TORCH_DEVICE", None) == 'dlc' and torch.dlc.is_available()
+
 # PyTorch Multi-GPU DDP Constants
 RANK = int(os.getenv("RANK", -1))
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", -1))  # https://pytorch.org/docs/stable/elastic/run.html

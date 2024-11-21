@@ -51,6 +51,32 @@ __all__ = (
     "SCDown",
 )
 
+def debug_print(*args):
+    import os
+    if os.environ.get("PY_DEBUG") != '1':
+        return
+    import inspect
+    import sys
+    f = inspect.currentframe().f_back
+    frameinfo = inspect.getframeinfo(f)
+    filename = frameinfo.filename
+    lineno = frameinfo.lineno
+    # get the class name 
+    try:
+        class_name = f.f_locals['self'].__class__.__name__
+    except:
+        class_name = None
+    # get the function name 
+    func = frameinfo.function
+    msg = f"\n\033[36m{filename}:{lineno} \033[0m"
+    if class_name:
+        msg += f"\033[1m\033[33m{class_name} [{func}]\033[0m "
+    else:
+        msg += f"\033[1m\033[33m[{func}]\033[0m "
+    msg += " ".join(str(arg) for arg in args)
+    print(msg, "\n", file=sys.stdout)
+    sys.stdout.flush()
+    return msg
 
 class DFL(nn.Module):
     """
@@ -183,6 +209,7 @@ class SPPF(nn.Module):
 
     def forward(self, x):
         """Forward pass through Ghost Convolution block."""
+        debug_print("x:", x.shape, " maxpool args:", self.m.kernel_size, self.m.stride, self.m.padding)
         y = [self.cv1(x)]
         y.extend(self.m(y[-1]) for _ in range(3))
         return self.cv2(torch.cat(y, 1))

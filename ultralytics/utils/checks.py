@@ -44,6 +44,7 @@ from ultralytics.utils import (
     emojis,
     is_github_action_running,
     url2file,
+    use_dlc,
 )
 
 
@@ -611,9 +612,10 @@ def collect_system_info():
         "Disk": f"{(total - free) / gib:.1f}/{total / gib:.1f} GB",
         "CPU": get_cpu_info(),
         "CPU count": os.cpu_count(),
-        "GPU": get_gpu_info(index=0) if cuda else None,
-        "GPU count": torch.cuda.device_count() if cuda else None,
+        "GPU": get_gpu_info(index=0) if (cuda or use_dlc()) else None,
+        "GPU count": torch.dlc.device_count() if use_dlc() else (torch.cuda.device_count() if cuda else None),
         "CUDA": torch.version.cuda if cuda else None,
+        "DLC": torch.version.dlc if use_dlc() else None,
     }
     LOGGER.info("\n" + "\n".join(f"{k:<20}{v}" for k, v in info_dict.items()) + "\n")
 
