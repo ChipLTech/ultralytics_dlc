@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 from PIL import Image
 
-from ultralytics.utils import ARM64, IS_JETSON, IS_RASPBERRYPI, LINUX, LOGGER, ROOT, yaml_load
+from ultralytics.utils import ARM64, IS_JETSON, IS_RASPBERRYPI, LINUX, LOGGER, ROOT, yaml_load, use_dlc, debug_print
 from ultralytics.utils.checks import check_requirements, check_suffix, check_version, check_yaml
 from ultralytics.utils.downloads import attempt_download_asset, is_url
 
@@ -472,6 +472,16 @@ class AutoBackend(nn.Module):
                 f"See https://docs.ultralytics.com/modes/predict for help."
             )
 
+        for name, module in model.named_modules():
+            if isinstance(module, nn.Conv2d) and use_dlc():
+                debug_print(1, name, "to channels last:", module.weight.shape)
+                module.weight.data = torch.empty(
+                    size = module.weight.shape, 
+                    device = module.weight.device, 
+                    dtype = module.weight.dtype,
+                    memory_format=torch.channels_last
+                ).copy_(module.weight.data)
+
         # Load external metadata YAML
         if isinstance(metadata, (str, Path)) and Path(metadata).exists():
             metadata = yaml_load(metadata)
@@ -730,7 +740,7 @@ class AutoBackend(nn.Module):
 
         warmup_types = self.pt, self.jit, self.onnx, self.engine, self.saved_model, self.pb, self.triton, self.nn_module
         if any(warmup_types) and (self.device.type != "cpu" or self.triton):
-            im = torch.empty(*imgsz, dtype=torch.half if self.fp16 else torch.float, device=self.device)  # input
+            im = torch.zeros(*imgsz, dtype=torch.half if self.fp16 else torch.float, device=self.device)  # input
             for _ in range(2 if self.jit else 1):
                 self.forward(im)  # warmup
 
