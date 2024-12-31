@@ -28,10 +28,41 @@ from tqdm import tqdm as tqdm_original
 
 from ultralytics import __version__
 
-from functools import lru_cache 
+from functools import lru_cache
+
 @lru_cache(maxsize=1)
 def use_dlc() -> bool:
-    return os.environ.get("ACCELERATE_TORCH_DEVICE", None) == 'dlc' and torch.dlc.is_available()
+    return os.environ.get("ACCELERATE_TORCH_DEVICE", None) == 'dlc'
+
+def debug_print(level: int = 1, *args):
+    from functools import lru_cache
+    import os, inspect
+    @lru_cache()
+    def debug_enabled(level: int) -> bool:
+        try:
+            return int(os.environ.get("PY_DEBUG", "0")) >= level
+        except:
+            return False
+    if not isinstance(level, int) or not debug_enabled(level):
+        return
+    f = inspect.currentframe().f_back
+    frameinfo = inspect.getframeinfo(f)
+    filename = frameinfo.filename
+    lineno = frameinfo.lineno
+    # get the class name
+    try:
+        class_name = f.f_locals['self'].__class__.__name__
+    except:
+        class_name = None
+    # get the function name
+    func = frameinfo.function
+    msg = f"\n\033[36m{filename}:{lineno} \033[0m"
+    if class_name:
+        msg += f"\033[1m\033[33m{class_name} [{func}]\033[0m "
+    else:
+        msg += f"\033[1m\033[33m[{func}]\033[0m "
+    msg += " ".join(str(arg) for arg in args)
+    print(msg, "\n", flush=True)
 
 # PyTorch Multi-GPU DDP Constants
 RANK = int(os.getenv("RANK", -1))

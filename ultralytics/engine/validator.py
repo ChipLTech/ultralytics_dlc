@@ -31,7 +31,7 @@ import torch
 from ultralytics.cfg import get_cfg, get_save_dir
 from ultralytics.data.utils import check_cls_dataset, check_det_dataset
 from ultralytics.nn.autobackend import AutoBackend
-from ultralytics.utils import LOGGER, TQDM, callbacks, colorstr, emojis
+from ultralytics.utils import LOGGER, TQDM, callbacks, colorstr, emojis, use_dlc, debug_print
 from ultralytics.utils.checks import check_imgsz
 from ultralytics.utils.ops import Profile
 from ultralytics.utils.torch_utils import de_parallel, select_device, smart_inference_mode
@@ -158,6 +158,7 @@ class BaseValidator:
             model.eval()
             model.warmup(imgsz=(1 if pt else self.args.batch, 3, imgsz, imgsz))  # warmup
 
+        # import os; os.environ["DLC_SYN_VERBOSE"] = "1"
         self.run_callbacks("on_val_start")
         dt = (
             Profile(device=self.device),
@@ -172,6 +173,7 @@ class BaseValidator:
             self.run_callbacks("on_val_batch_start")
             self.batch_i = batch_i
             # Preprocess
+            debug_print(2, "batch before preprocess: ", batch)
             with dt[0]:
                 batch = self.preprocess(batch)
 
@@ -188,6 +190,11 @@ class BaseValidator:
             with dt[3]:
                 preds = self.postprocess(preds)
 
+            debug_print(2, "preds after postprocess: ", preds, " TODO FIXME: post process use dlc")
+            if use_dlc():
+                for k, v in batch.items():
+                    if isinstance(v, torch.Tensor):
+                        batch[k] = v.cpu()
             self.update_metrics(preds, batch)
             if self.args.plots and batch_i < 3:
                 self.plot_val_samples(batch, batch_i)

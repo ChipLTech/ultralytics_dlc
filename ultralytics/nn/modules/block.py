@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ultralytics.utils.torch_utils import fuse_conv_and_bn
+from ultralytics.utils import use_dlc, debug_print
 
 from .conv import Conv, DWConv, GhostConv, LightConv, RepConv, autopad
 from .transformer import TransformerBlock
@@ -96,7 +97,10 @@ class DFL(nn.Module):
     def forward(self, x):
         """Applies a transformer layer on input tensor 'x' and returns a tensor."""
         b, _, a = x.shape  # batch, channels, anchors
-        return self.conv(x.view(b, 4, self.c1, a).transpose(2, 1).softmax(1)).view(b, 4, a)
+        x = x.view(b, 4, self.c1, a)
+        x = x.softmax(2)
+        x = x.transpose(2, 1)
+        return self.conv(x).view(b, 4, a)
         # return self.conv(x.view(b, self.c1, 4, a).softmax(1)).view(b, 4, a)
 
 
@@ -261,7 +265,10 @@ class C2f(nn.Module):
 
     def forward(self, x):
         """Forward pass through C2f layer."""
+        debug_print(1, x.shape)
         y = list(self.cv1(x).chunk(2, 1))
+        if use_dlc():
+            y = [y[0].contiguous(memory_format=torch.channels_last), y[1].contiguous(memory_format=torch.channels_last)]
         y.extend(m(y[-1]) for m in self.m)
         return self.cv2(torch.cat(y, 1))
 

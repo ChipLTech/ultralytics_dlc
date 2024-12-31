@@ -10,35 +10,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ultralytics.utils import LOGGER
+from ultralytics.utils import LOGGER, use_dlc, debug_print
 from ultralytics.utils.metrics import batch_probiou
 
-def debug_print(*args):
-    import os
-    if os.environ.get("PY_DEBUG") != '1':
-        return
-    import inspect
-    import sys
-    f = inspect.currentframe().f_back
-    frameinfo = inspect.getframeinfo(f)
-    filename = frameinfo.filename
-    lineno = frameinfo.lineno
-    # get the class name 
-    try:
-        class_name = f.f_locals['self'].__class__.__name__
-    except:
-        class_name = None
-    # get the function name 
-    func = frameinfo.function
-    msg = f"\n\033[36m{filename}:{lineno} \033[0m"
-    if class_name:
-        msg += f"\033[1m\033[33m{class_name} [{func}]\033[0m "
-    else:
-        msg += f"\033[1m\033[33m[{func}]\033[0m "
-    msg += " ".join(str(arg) for arg in args)
-    print(msg, "\n", file=sys.stdout)
-    sys.stdout.flush()
-    return msg
 
 class Profile(contextlib.ContextDecorator):
     """
@@ -240,6 +214,9 @@ def non_max_suppression(
     assert 0 <= iou_thres <= 1, f"Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0"
     if isinstance(prediction, (list, tuple)):  # YOLOv8 model in validation model, output = (inference_out, loss_out)
         prediction = prediction[0]  # select only inference output
+    debug_print(1, "postprocess preds:", prediction, " TODO FIXME: use dlc op")
+    if use_dlc():
+        prediction = prediction.detach().cpu()
     if classes is not None:
         classes = torch.tensor(classes, device=prediction.device)
 
@@ -315,8 +292,7 @@ def non_max_suppression(
             i = nms_rotated(boxes, scores, iou_thres)
         else:
             boxes = x[:, :4] + c  # boxes (offset by class)
-            # FIXME TODO: use native dlc op
-            i = torchvision.ops.nms(boxes.cpu(), scores.cpu(), iou_thres).to(device=x.device)
+            i = torchvision.ops.nms(boxes, scores, iou_thres)
             # i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
         i = i[:max_det]  # limit detections
 
@@ -333,10 +309,9 @@ def non_max_suppression(
         #         i = i[iou.sum(1) > 1]  # require redundancy
 
         output[xi] = x[i]
-        if (time.time() - t) > time_limit:
-            LOGGER.warning(f"WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded")
-            break  # time limit exceeded
-
+        # if (time.time() - t) > time_limit:
+        #     LOGGER.warning(f"WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded")
+        #     break  # time limit exceeded
     return output
 
 
