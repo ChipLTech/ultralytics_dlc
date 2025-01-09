@@ -29,21 +29,21 @@ from tqdm import tqdm as tqdm_original
 from ultralytics import __version__
 
 from functools import lru_cache
+import os, inspect
 
 @lru_cache(maxsize=1)
 def use_dlc() -> bool:
     return os.environ.get("ACCELERATE_TORCH_DEVICE", None) == 'dlc'
 
+@lru_cache()
+def debug_enabled(level: int) -> bool:
+    try:
+        return int(os.environ.get("PY_DEBUG", "0")) >= level
+    except:
+        return False
+
 def debug_print(level: int = 1, *args):
-    from functools import lru_cache
-    import os, inspect
-    @lru_cache()
-    def debug_enabled(level: int) -> bool:
-        try:
-            return int(os.environ.get("PY_DEBUG", "0")) >= level
-        except:
-            return False
-    if not isinstance(level, int) or not debug_enabled(level):
+    if not debug_enabled(level) or not isinstance(level, int):
         return
     f = inspect.currentframe().f_back
     frameinfo = inspect.getframeinfo(f)

@@ -9,12 +9,13 @@ args = parser.parse_args()
 
 os.environ["ACCELERATE_TORCH_DEVICE"] = 'cpu' if args.device == 'cpu' else 'dlc'
 device = 'cpu' if args.device == 'cpu' else int(args.device)
+home_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 
-model = YOLO('yolov8x.pt', verbose=True)  # load a pretrained model (recommended for training)
-
+model = YOLO(os.path.join(home_dir, 'ci', 'yolov8n.pt'), verbose=True)
+image = os.path.join(home_dir, 'ultralytics', 'assets', 'bus.jpg')
 # Use the model
 # results = model.train(data='coco8.yaml', epochs=3)  # train the model
-# import ipdb; ipdb.set_trace()
-results = model.val(data='coco.yaml', device=device)  # evaluate model performance on the validation set
-# results: Results = model('/workspace/test/dlc/datasets/coco/images/val2017/000000278705.jpg')[0]  # predict on an image
-# results.save("out.jpg")
+
+# results = model.val(data='coco.yaml', device=device)  # evaluate model performance on the validation set
+results: Results = model(image)[0]  # predict on an image
+results.save(os.path.join(home_dir, 'ci', 'out.jpg'))
