@@ -30,11 +30,11 @@ args = parser.parse_args()
 os.environ["ACCELERATE_TORCH_DEVICE"] = 'cpu' if args.device == 'cpu' else 'dlc'
 device = 'cpu' if args.device == 'cpu' else int(args.device)
 
-model_seg = YOLO("yolov8n-seg_1.pt")
-model_detect = YOLO("yolov8n.pt")
-model_classify = YOLO("yolo11n-cls.pt")
-model_pose = YOLO("yolov8l-pose.pt")
-model_obb = YOLO("yolo11n-obb.pt")
+model_seg = YOLO("weights/yolov8n-seg_1.pt")
+model_detect = YOLO("weights/yolov8n.pt")
+model_classify = YOLO("weights/yolo11n-cls.pt")
+model_pose = YOLO("weights/yolov8m-pose.pt")
+model_obb = YOLO("weights/yolo11n-obb.pt")
 
 def testSeg(model):
     results = model.predict("inputs/elephants_seg.jpg")
@@ -54,21 +54,19 @@ def testClassify(model):
         result.save("outputs/result_bus_classify.jpg")
 
 def testPose(model):
-    results = model(source="inputs/running.mp4", show = False, conf = 0.3, save = True)
-    for filename in os.listdir("runs/pose/predict"):
-        if filename.endswith(".avi"):
-            shutil.move(os.path.join("runs/pose/predict", filename), "outputs/running.avi")
-    shutil.rmtree("runs")
+    results = model(source="inputs/running.mp4", show = False, conf = 0.3, save = True, project = "outputs", name = "running_Pose.avi")
 
 def testOBB(model):
-    results = model(source="inputs/water.mp4", show = False, conf = 0.3, save = True)
-    for filename in os.listdir("runs/obb/predict"):
-        if filename.endswith(".avi"):
-            shutil.move(os.path.join("runs/obb/predict", filename), "outputs/water.avi")
-    shutil.rmtree("runs")
+    results = model(source="inputs/water.mp4", show = False, conf = 0.3, save = True, project = "outputs", name = "water_OBB.avi")
+    
+def track():
+    results_seg = model_seg(source="inputs/running.mp4", show = False, conf = 0.3, save = True, project = "outputs", name = "running_seg.avi")
+    results_det = model_det(source="inputs/running.mp4", show = False, conf = 0.3, save = True, project = "outputs", name = "running_det.avi")
+    result_pose = model_pose(source="inputs/running.mp4", show = False, conf = 0.3, save = True, project = "outputs", name = "running_pose.avi")
     
 testSeg(model_seg)
 testDetect(model_detect)
 testClassify(model_classify)
 testPose(model_pose)
 testOBB(model_obb)
+track()
